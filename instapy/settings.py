@@ -59,8 +59,8 @@ class Settings:
     show_logs = None
 
     user_agent = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 13_0 like Mac OS X) AppleWebKit/605.1.15 "
+        "FxiOS/20.2 Mobile/15E148 Safari/605.1.15"
     )
 
     # state of instantiation of InstaPy

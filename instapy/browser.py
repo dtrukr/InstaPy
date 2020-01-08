@@ -61,6 +61,7 @@ def set_selenium_local_session(
     page_delay,
     geckodriver_path,
     logger,
+    positionX
 ):
     """Starts local session for a selenium server.
     Default case scenario."""
@@ -70,8 +71,8 @@ def set_selenium_local_session(
 
     # set Firefox Agent to mobile agent
     user_agent = (
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 12_1 like Mac OS X) AppleWebKit/605.1.15 "
-        "(KHTML, like Gecko) FxiOS/18.1 Mobile/16B92 Safari/605.1.15"
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 13_0 like Mac OS X) AppleWebKit/605.1.15 "
+        "FxiOS/20.2 Mobile/15E148 Safari/605.1.15"        
     )
 
     # keep user_agent
@@ -128,6 +129,7 @@ def set_selenium_local_session(
 
     # set mobile viewport (iPhone X)
     browser.set_window_size(375, 812)
+    browser.set_window_position(positionX, 0)
 
     message = "Session started!"
     highlight_print("browser", message, "initialization", "info", logger)

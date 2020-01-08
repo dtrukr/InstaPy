@@ -487,6 +487,20 @@ def login_user(
     else:
         return False
 
+def anon_user(
+    browser,
+    logger,
+    logfolder,
+    proxy_address
+):
+
+    ig_homepage = "https://www.instagram.com"
+    web_address_navigator(browser, ig_homepage)
+
+    # dismiss_get_app_offer(browser, logger)
+
+    return True
+
 
 def dismiss_get_app_offer(browser, logger):
     """ Dismiss 'Get the Instagram App' page after a fresh login """

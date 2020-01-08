@@ -34,6 +34,7 @@ from .like_util import get_links_for_username
 from .like_util import like_comment
 from .story_util import watch_story
 from .login_util import login_user
+from .login_util import anon_user
 from .settings import Settings
 from .settings import localize_path
 from .print_log_writer import log_follower_num
@@ -98,6 +99,8 @@ class InstaPy:
         self,
         username: str = None,
         password: str = None,
+        username2: str = None,
+        password2: str = None,
         nogui: bool = False,
         selenium_local_session: bool = True,
         browser_profile_path: str = None,
@@ -116,7 +119,7 @@ class InstaPy:
         bypass_security_challenge_using: str = "email",
         want_check_browser: bool = True,
     ):
-        print("InstaPy Version: {}".format(__version__))
+        print("InstaPy Version: {} (!!! PRIVATE !!!)".format(__version__))
         cli_args = parse_cli_args()
         username = cli_args.username or username
         password = cli_args.password or password
@@ -143,6 +146,7 @@ class InstaPy:
                 raise InstaPyError("The 'nogui' parameter isn't supported on Windows.")
 
         self.browser = None
+        self.anon_browser = None
         self.page_delay = page_delay
         self.disable_image_load = disable_image_load
         self.bypass_security_challenge_using = bypass_security_challenge_using
@@ -150,6 +154,8 @@ class InstaPy:
         # choose environment over static typed credentials
         self.username = os.environ.get("INSTA_USER") or username
         self.password = os.environ.get("INSTA_PW") or password
+        self.username2 = username2
+        self.password2 = password2
 
         Settings.profile["name"] = self.username
 
@@ -317,9 +323,27 @@ class InstaPy:
                 page_delay,
                 geckodriver_path,
                 self.logger,
+                0
             )
             if len(err_msg) > 0:
                 raise InstaPyError(err_msg)
+
+            self.anon_browser, err_msg = set_selenium_local_session(
+                proxy_address,
+                proxy_port,
+                proxy_username,
+                proxy_password,
+                headless_browser,
+                browser_profile_path,
+                disable_image_load,
+                page_delay,
+                geckodriver_path,
+                self.logger,
+                400
+            )
+            if len(err_msg) > 0:
+                raise InstaPyError(err_msg)   
+
 
     def get_instapy_logger(self, show_logs: bool, log_handler=None):
         """
@@ -400,6 +424,42 @@ class InstaPy:
         temporary_page_delay = 5
         self.browser.implicitly_wait(temporary_page_delay)
 
+        if self.username2 is None:
+            if not anon_user(
+                self.anon_browser,
+                self.logger,
+                self.logfolder,
+                self.proxy_address
+            ):
+                message = (
+                    "Unable to login to Instagram! "
+                    "You will find more information in the logs above."
+                )
+                highlight_print(self.username, message, "login", "critical", self.logger)
+
+                self.aborting = True
+                return self 
+        
+        else:
+            if not login_user(
+                self.anon_browser,
+                self.username2,
+                self.password2,
+                self.logger,
+                self.logfolder,
+                self.proxy_address,
+                self.bypass_security_challenge_using,
+                self.want_check_browser,
+            ):
+                message = (
+                    "Unable to login to Instagram! "
+                    "You will find more information in the logs above."
+                )
+                highlight_print(self.username, message, "login", "critical", self.logger)
+
+                self.aborting = True
+                return self
+
         if not login_user(
             self.browser,
             self.username,
@@ -425,7 +485,7 @@ class InstaPy:
         highlight_print(self.username, message, "login", "info", self.logger)
         # try to save account progress
         try:
-            save_account_progress(self.browser, self.username, self.logger)
+            save_account_progress(self.anon_browser, self.username, self.logger)
         except Exception as e:
             self.logger.warning(
                 "Unable to save account progress, skipping data update " + str(e)
@@ -434,9 +494,9 @@ class InstaPy:
         # logs only followers/following numbers when able to login,
         # to speed up the login process and avoid loading profile
         # page (meaning less server calls)
-        self.followed_by = log_follower_num(self.browser, self.username, self.logfolder)
+        self.followed_by = log_follower_num(self.anon_browser, self.username, self.logfolder)
         self.following_num = log_following_num(
-            self.browser, self.username, self.logfolder
+            self.anon_browser, self.username, self.logfolder
         )
 
         return self
@@ -733,7 +793,7 @@ class InstaPy:
             return self
 
         for location in locations:
-            lat, lon = get_cord_location(self.browser, location)
+            lat, lon = get_cord_location(self.anon_browser, location)
 
             bbox = get_bounding_box(
                 lat, lon, logger=self.logger, half_side_in_miles=radius
@@ -889,7 +949,7 @@ class InstaPy:
                 "Following commenters of '{}' from {} pictures in last {} "
                 "days...\nScrapping wall..".format(username, max_pic, daysold)
             )
-            commenters = extract_information(self.browser, username, daysold, max_pic)
+            commenters = extract_information(self.anon_browser, username, daysold, max_pic)
 
             if len(commenters) > 0:
                 self.logger.info("Going to follow top {} users.\n".format(amount))
@@ -1010,7 +1070,7 @@ class InstaPy:
                 break
 
             photo_urls = get_photo_urls_from_profile(
-                self.browser, username, photos_grab_amount, randomize
+                self.anon_browser, username, photos_grab_amount, randomize
             )
             sleep(1)
             if not isinstance(photo_urls, list):
@@ -1295,7 +1355,7 @@ class InstaPy:
     def validate_user_call(self, user_name: str):
         """ Short call of validate_username() function """
         validation, details = validate_username(
-            self.browser,
+            self.anon_browser,
             user_name,
             self.username,
             self.ignore_users,
@@ -1441,7 +1501,7 @@ class InstaPy:
 
             try:
                 links = get_links_for_location(
-                    self.browser, location, amount, self.logger, media, skip_top_posts
+                    self.anon_browser, location, amount, self.logger, media, skip_top_posts
                 )
             except NoSuchElementException as exc:
                 self.logger.warning(
@@ -1468,7 +1528,7 @@ class InstaPy:
 
                 try:
                     inappropriate, user_name, is_video, reason, scope = check_link(
-                        self.browser,
+                        self.anon_browser,
                         link,
                         self.dont_like,
                         self.mandatory_words,
@@ -1482,7 +1542,7 @@ class InstaPy:
 
                     if not inappropriate and self.delimit_liking:
                         self.liking_approved = verify_liking(
-                            self.browser, self.max_likes, self.min_likes, self.logger
+                            self.anon_browser, self.max_likes, self.min_likes, self.logger
                         )
 
                     if not inappropriate and self.liking_approved:
@@ -1668,7 +1728,7 @@ class InstaPy:
 
             try:
                 links = get_links_for_location(
-                    self.browser, location, amount, self.logger, media, skip_top_posts
+                    self.anon_browser, location, amount, self.logger, media, skip_top_posts
                 )
             except NoSuchElementException:
                 self.logger.warning("Too few images, skipping this location")
@@ -1693,7 +1753,7 @@ class InstaPy:
 
                 try:
                     inappropriate, user_name, is_video, reason, scope = check_link(
-                        self.browser,
+                        self.anon_browser,
                         link,
                         self.dont_like,
                         self.mandatory_words,
@@ -1887,7 +1947,7 @@ class InstaPy:
 
             try:
                 links = get_links_for_tag(
-                    self.browser,
+                    self.anon_browser,
                     tag,
                     amount,
                     skip_top_posts,
@@ -1915,7 +1975,7 @@ class InstaPy:
 
                 try:
                     inappropriate, user_name, is_video, reason, scope = check_link(
-                        self.browser,
+                        self.anon_browser,
                         link,
                         self.dont_like,
                         self.mandatory_words,
@@ -1929,7 +1989,7 @@ class InstaPy:
 
                     if not inappropriate and self.delimit_liking:
                         self.liking_approved = verify_liking(
-                            self.browser, self.max_likes, self.min_likes, self.logger
+                            self.anon_browser, self.max_likes, self.min_likes, self.logger
                         )
 
                     if not inappropriate and self.liking_approved:
@@ -2157,7 +2217,7 @@ class InstaPy:
 
             try:
                 links = get_links_for_username(
-                    self.browser,
+                    self.anon_browser,
                     self.username,
                     username,
                     amount,
@@ -2226,7 +2286,7 @@ class InstaPy:
 
                 try:
                     inappropriate, user_name, is_video, reason, scope = check_link(
-                        self.browser,
+                        self.anon_browser,
                         link,
                         self.dont_like,
                         self.mandatory_words,
@@ -2240,7 +2300,7 @@ class InstaPy:
 
                     if not inappropriate and self.delimit_liking:
                         self.liking_approved = verify_liking(
-                            self.browser, self.max_likes, self.min_likes, self.logger
+                            self.anon_browser, self.max_likes, self.min_likes, self.logger
                         )
 
                     if not inappropriate and self.liking_approved:
@@ -2467,7 +2527,7 @@ class InstaPy:
 
             try:
                 links = get_links_for_username(
-                    self.browser,
+                    self.anon_browser,
                     self.username,
                     username,
                     amount,
@@ -2511,7 +2571,7 @@ class InstaPy:
 
                 try:
                     inappropriate, user_name, is_video, reason, scope = check_link(
-                        self.browser,
+                        self.anon_browser,
                         link,
                         self.dont_like,
                         self.mandatory_words,
@@ -2541,7 +2601,7 @@ class InstaPy:
                         # like
                         if self.do_like and liking and self.delimit_liking:
                             self.liking_approved = verify_liking(
-                                self.browser,
+                                self.anon_browser,
                                 self.max_likes,
                                 self.min_likes,
                                 self.logger,
@@ -2792,7 +2852,7 @@ class InstaPy:
 
             try:
                 links = get_links_for_username(
-                    self.browser,
+                    self.anon_browser,
                     self.username,
                     username,
                     amount,
@@ -2839,7 +2899,7 @@ class InstaPy:
 
                 try:
                     inappropriate, user_name, is_video, reason, scope = check_link(
-                        self.browser,
+                        self.anon_browser,
                         link,
                         self.dont_like,
                         self.mandatory_words,
@@ -2864,7 +2924,7 @@ class InstaPy:
                         # like
                         if self.do_like and liking and self.delimit_liking:
                             self.liking_approved = verify_liking(
-                                self.browser,
+                                self.anon_browser,
                                 self.max_likes,
                                 self.min_likes,
                                 self.logger,
@@ -3031,12 +3091,12 @@ class InstaPy:
 
         try:
             if not url:
-                urls = self.browser.find_elements_by_xpath(
+                urls = self.anon_browser.find_elements_by_xpath(
                     read_xpath(self.__class__.__name__, "main_article")
                 )
                 url = urls[0].get_attribute("href")
                 self.logger.info("new url {}".format(url))
-            tags = get_tags(self.browser, url)
+            tags = get_tags(self.anon_browser, url)
             self.logger.info(tags)
             self.like_by_tags(tags, amount, media)
         except TypeError as err:
@@ -4003,7 +4063,7 @@ class InstaPy:
                                 reason,
                                 scope,
                             ) = check_link(
-                                self.browser,
+                                self.anon_browser,
                                 link,
                                 self.dont_like,
                                 self.mandatory_words,
@@ -4017,7 +4077,7 @@ class InstaPy:
 
                             if not inappropriate and self.delimit_liking:
                                 self.liking_approved = verify_liking(
-                                    self.browser,
+                                    self.anon_browser,
                                     self.max_likes,
                                     self.min_likes,
                                     self.logger,
@@ -4472,6 +4532,7 @@ class InstaPy:
 
         Settings.InstaPy_is_running = False
         close_browser(self.browser, threaded_session, self.logger)
+        close_browser(self.anon_browser, threaded_session, self.logger)
 
         with interruption_handler(threaded=threaded_session):
             # close virtual display
@@ -4518,7 +4579,7 @@ class InstaPy:
 
             try:
                 links = get_links_for_location(
-                    self.browser, location, amount, self.logger, media, skip_top_posts
+                    self.anon_browser, location, amount, self.logger, media, skip_top_posts
                 )
             except NoSuchElementException:
                 self.logger.warning("Too few images, skipping this location")
@@ -4543,7 +4604,7 @@ class InstaPy:
 
                 try:
                     inappropriate, user_name, is_video, reason, scope = check_link(
-                        self.browser,
+                        self.anon_browser,
                         link,
                         self.dont_like,
                         self.mandatory_words,
@@ -4644,7 +4705,7 @@ class InstaPy:
 
             try:
                 links = get_links_for_tag(
-                    self.browser,
+                    self.anon_browser,
                     tag,
                     amount,
                     skip_top_posts,
@@ -4675,7 +4736,7 @@ class InstaPy:
 
                 try:
                     inappropriate, user_name, is_video, reason, scope = check_link(
-                        self.browser,
+                        self.anon_browser,
                         link,
                         self.dont_like,
                         self.mandatory_words,
@@ -4799,7 +4860,7 @@ class InstaPy:
 
             try:
                 inappropriate, user_name, is_video, reason, scope = check_link(
-                    self.browser,
+                    self.anon_browser,
                     url,
                     self.dont_like,
                     self.mandatory_words,
@@ -4813,7 +4874,7 @@ class InstaPy:
 
                 if not inappropriate and self.delimit_liking:
                     self.liking_approved = verify_liking(
-                        self.browser, self.max_likes, self.min_likes, self.logger
+                        self.anon_browser, self.max_likes, self.min_likes, self.logger
                     )
 
                 if not inappropriate and self.liking_approved:
@@ -5309,7 +5370,7 @@ class InstaPy:
 
             try:
                 links = get_links_for_username(
-                    self.browser,
+                    self.anon_browser,
                     self.username,
                     username,
                     posts_amount,
@@ -5365,7 +5426,7 @@ class InstaPy:
                 )
 
                 (inappropriate, user_name, is_video, reason, scope) = check_link(
-                    self.browser,
+                    self.anon_browser,
                     link,
                     self.dont_like,
                     self.mandatory_words,
@@ -5391,7 +5452,7 @@ class InstaPy:
 
                 # get comments (if any)
                 comment_data = get_comments_on_post(
-                    self.browser,
+                    self.anon_browser,
                     self.username,
                     username,
                     comments_per_post,
@@ -5792,7 +5853,7 @@ class InstaPy:
                 web_address_navigator(self.browser, post_link)
 
                 inappropriate, user_name, is_video, reason, scope = check_link(
-                    self.browser,
+                    self.anon_browser,
                     post_link,
                     self.dont_like,
                     self.mandatory_words,

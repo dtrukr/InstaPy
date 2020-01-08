@@ -116,3 +116,8 @@ Pipfile
 
 # Instances
 z_*
+
+_*.py
+_*.sh
+workspace
+
